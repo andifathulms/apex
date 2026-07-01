@@ -154,6 +154,10 @@ def check_for_new_sessions(dry_run: bool = False):
             if not dry_run:
                 _enqueue_ingestion(year, gp.name, stype)
 
+    # Once practice laps are in, compute the race-pace prediction (PRD: after
+    # FP2). Guarded so it runs once per weekend, not on every poll.
+    prediction_queued = _maybe_queue_prediction(gp, dry_run)
+
     logger.info(
         "OpenF1 reconcile: meeting=%s gp=%s reconciled=%d triggered=%d%s",
         meeting.get("meeting_name"), gp.name, reconciled, len(triggered),
@@ -165,5 +169,26 @@ def check_for_new_sessions(dry_run: bool = False):
         "matched_gp": gp.name,
         "reconciled": reconciled,
         "triggered": triggered,
+        "prediction_queued": prediction_queued,
         "dry_run": dry_run,
     }
+
+
+def _maybe_queue_prediction(gp: GrandPrix, dry_run: bool) -> bool:
+    """Queue race-pace prediction once FP2 laps are ingested (once per weekend)."""
+    from apps.predictions.models import RacePacePrediction
+
+    fp2_loaded = gp.sessions.filter(
+        session_type=Session.SessionType.FP2, is_loaded=True
+    ).exists()
+    if not fp2_loaded:
+        return False
+    if RacePacePrediction.objects.filter(grand_prix=gp).exists():
+        return False
+    if not dry_run:
+        from config.celery import app as celery_app
+
+        celery_app.send_task(
+            "apps.predictions.tasks.compute_race_pace_prediction", args=[gp.id]
+        )
+    return True
