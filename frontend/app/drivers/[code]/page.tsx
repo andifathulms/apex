@@ -1,30 +1,30 @@
-"use client";
-
+import type { Metadata } from "next";
 import { api } from "@/lib/api";
-import { useAsync } from "@/lib/useAsync";
-import { StateWrapper } from "@/components/ui/StateWrapper";
-import {
-  DriverCareerStats,
-  type CareerData,
-} from "@/components/drivers/DriverCareerStats";
+import { DriverCareerView } from "@/components/drivers/DriverCareerView";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: { code: string };
+}): Promise<Metadata> {
+  const code = params.code.toUpperCase();
+  try {
+    const data = (await api.getDriverCareer(code)) as {
+      driver: { full_name: string };
+    };
+    const name = data.driver?.full_name;
+    if (name) {
+      return {
+        title: `${name} (${code}) — Apex`,
+        description: `Career stats — wins, podiums, poles, points per race — for ${name}.`,
+      };
+    }
+  } catch {
+    // fall through
+  }
+  return { title: `${code} — Apex` };
+}
 
 export default function DriverPage({ params }: { params: { code: string } }) {
-  const code = params.code.toUpperCase();
-  const state = useAsync<CareerData>(
-    () => api.getDriverCareer(code) as Promise<CareerData>,
-    [code]
-  );
-
-  return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold">Driver Career</h1>
-      </header>
-      <div className="card max-w-lg p-6">
-        <StateWrapper state={state}>
-          {(data) => <DriverCareerStats data={data} />}
-        </StateWrapper>
-      </div>
-    </div>
-  );
+  return <DriverCareerView code={params.code.toUpperCase()} />;
 }
