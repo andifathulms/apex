@@ -35,10 +35,17 @@ export function TelemetryDeepDive({ data }: { data: TelemetryComparison }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-6 text-sm">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <Legend color={DRIVER_COLORS[0]} label={data.driver1.code} />
         <Legend color={DRIVER_COLORS[1]} label={data.driver2.code} />
+        <span className="flex items-center gap-2 text-text-muted">
+          <span className="inline-block h-2 w-4 rounded-sm bg-drs-green/20" />
+          DRS zone
+        </span>
         <span className="text-text-muted">
+          Ticks on speed trace = {data.driver1.code} gear changes.
+        </span>
+        <span className="hidden text-text-muted sm:inline">
           Hover any chart — all views scrub together.
         </span>
       </div>
