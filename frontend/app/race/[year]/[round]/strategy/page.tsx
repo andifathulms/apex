@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { TireStrategyVisualizer } from "@/components/strategy/TireStrategyVisualizer";
 import { DegradationCurve } from "@/components/strategy/DegradationCurve";
 import { PitStopComparison } from "@/components/strategy/PitStopComparison";
+import { StintComparator } from "@/components/strategy/StintComparator";
 
 export default function StrategyPage({
   params,
@@ -70,6 +71,19 @@ export default function StrategyPage({
               <PitStopComparison sessionId={sessionId} />
             </div>
           </div>
+
+          {gpId && (
+            <div className="card p-4">
+              <h2 className="mb-3 text-xs uppercase tracking-wide text-text-secondary">
+                Strategy Comparator — 1-stop vs 2-stop vs 3-stop
+              </h2>
+              <StintComparator
+                sessionId={sessionId}
+                gpId={gpId}
+                sessionType={sessionType}
+              />
+            </div>
+          )}
         </>
       )}
     </div>
