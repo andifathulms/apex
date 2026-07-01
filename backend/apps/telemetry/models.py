@@ -17,6 +17,12 @@ class Telemetry(models.Model):
     )
     distance = models.FloatField(help_text="Meters from lap start")
     time_offset = models.FloatField(help_text="Seconds from lap start")
+    # Integer millisecond mirror of time_offset. TimescaleDB hypertable
+    # dimensions must be integer/timestamp/date (not double precision), so this
+    # is the actual partition column — the within-lap time axis, as intended.
+    time_offset_ms = models.IntegerField(
+        default=0, help_text="Milliseconds from lap start (hypertable partition key)"
+    )
     speed_kmh = models.FloatField(null=True, blank=True)
     throttle_pct = models.FloatField(null=True, blank=True)
     brake = models.BooleanField(default=False)

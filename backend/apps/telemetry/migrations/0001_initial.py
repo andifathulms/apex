@@ -17,6 +17,7 @@ class Migration(migrations.Migration):
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("distance", models.FloatField(help_text="Meters from lap start")),
                 ("time_offset", models.FloatField(help_text="Seconds from lap start")),
+                ("time_offset_ms", models.IntegerField(default=0, help_text="Milliseconds from lap start (hypertable partition key)")),
                 ("speed_kmh", models.FloatField(blank=True, null=True)),
                 ("throttle_pct", models.FloatField(blank=True, null=True)),
                 ("brake", models.BooleanField(default=False)),
@@ -37,18 +38,19 @@ class Migration(migrations.Migration):
             index=models.Index(fields=["lap", "distance"], name="telemetry_lap_distance_idx"),
         ),
         # --- TimescaleDB hypertable setup ---
-        # A hypertable requires the partition column in every unique index.
-        # Django's default `id` PK is a unique index that does NOT contain
-        # `time_offset`, so we swap it for a composite (id, time_offset) PK
-        # before creating the hypertable. Partition column is within-lap time
-        # (non-calendar) — queries are always scoped to a single lap_id.
+        # A hypertable requires the partition column in every unique index, and
+        # the dimension must be integer/timestamp/date (not double precision).
+        # We partition on `time_offset_ms` (integer within-lap milliseconds) and
+        # swap Django's default `id` PK for a composite (id, time_offset_ms) PK
+        # so the partition column is covered. Chunk interval 60000 ms = 60s.
+        # Queries are always scoped to a single lap_id (btree index below).
         migrations.RunSQL(
             sql=(
                 "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE; "
                 "ALTER TABLE telemetry_telemetry DROP CONSTRAINT telemetry_telemetry_pkey; "
-                "ALTER TABLE telemetry_telemetry ADD PRIMARY KEY (id, time_offset); "
-                "SELECT create_hypertable('telemetry_telemetry', 'time_offset', "
-                "chunk_time_interval => 60, if_not_exists => TRUE, migrate_data => TRUE); "
+                "ALTER TABLE telemetry_telemetry ADD PRIMARY KEY (id, time_offset_ms); "
+                "SELECT create_hypertable('telemetry_telemetry', 'time_offset_ms', "
+                "chunk_time_interval => 60000, if_not_exists => TRUE, migrate_data => TRUE); "
                 "CREATE INDEX IF NOT EXISTS telemetry_lap_id_btree "
                 "ON telemetry_telemetry (lap_id);"
             ),

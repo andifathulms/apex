@@ -32,13 +32,14 @@ def bulk_insert_telemetry(conn, lap_id: int, rows: list[dict]):
             cur,
             """
             INSERT INTO telemetry_telemetry (
-                lap_id, distance, time_offset, speed_kmh, throttle_pct,
-                brake, gear, rpm, drs, x_position, y_position
+                lap_id, distance, time_offset, time_offset_ms, speed_kmh,
+                throttle_pct, brake, gear, rpm, drs, x_position, y_position
             ) VALUES %s
             """,
             [
                 (
-                    lap_id, r["distance"], r["time_offset"], r["speed_kmh"],
+                    lap_id, r["distance"], r["time_offset"],
+                    int(round(r["time_offset"] * 1000)), r["speed_kmh"],
                     r["throttle_pct"], r["brake"], r["gear"], r["rpm"],
                     r["drs"], r["x_position"], r["y_position"],
                 )
