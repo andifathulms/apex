@@ -8,6 +8,7 @@ import fastf1
 import pandas as pd
 import requests
 
+from . import enable_cache
 from .db import (
     get_connection,
     resolve_driver_id,
@@ -309,6 +310,7 @@ def ingest_session_laps(year: int, gp_name: str, session_type: str):
             "Backfill seasons/grands prix first."
         )
 
+    enable_cache()
     session = fastf1.get_session(year, gp_name, session_type)
     session.load(telemetry=False, weather=True, messages=False)  # fast path
 

@@ -5,13 +5,17 @@ PostgreSQL database directly via psycopg2 (NOT the Django ORM).
 """
 import os
 
-import fastf1
-
-# Cache is mandatory — session data is 50-100MB and FastF1 re-downloads
-# without it. A persistent volume is mounted at FASTF1_CACHE_DIR in Docker.
-_CACHE_DIR = os.environ.get("FASTF1_CACHE_DIR", "/data/fastf1-cache")
-os.makedirs(_CACHE_DIR, exist_ok=True)
-fastf1.Cache.enable_cache(_CACHE_DIR)
-
 # Session type codes (see CLAUDE.md)
 SESSION_TYPES = ["FP1", "FP2", "FP3", "Q", "SQ", "S", "R"]
+
+
+def enable_cache():
+    """Enable FastF1's on-disk cache (mandatory — sessions are 50-100MB and
+    FastF1 re-downloads without it). Called lazily by the ingest entrypoints so
+    importing this package doesn't require FastF1 to be installed (e.g. for unit
+    tests of the pure helpers)."""
+    import fastf1
+
+    cache_dir = os.environ.get("FASTF1_CACHE_DIR", "/data/fastf1-cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    fastf1.Cache.enable_cache(cache_dir)

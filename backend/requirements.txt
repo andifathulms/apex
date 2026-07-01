@@ -10,3 +10,5 @@ django-celery-beat==2.6.0
 requests==2.31.0
 gunicorn==22.0.0
 python-dotenv==1.0.1
+pytest==8.2.2
+pytest-django==4.8.0

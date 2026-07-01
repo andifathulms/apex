@@ -11,6 +11,7 @@ import fastf1
 import pandas as pd
 import psycopg2.extras
 
+from . import enable_cache
 from .db import get_connection, resolve_lap_id
 from .helpers import drs_is_active
 
@@ -50,6 +51,7 @@ def bulk_insert_telemetry(conn, lap_id: int, rows: list[dict]):
 
 def ingest_lap_telemetry(year: int, gp_name: str, session_type: str,
                          driver_code: str, lap_number: int):
+    enable_cache()
     session = fastf1.get_session(year, gp_name, session_type)
     session.load(telemetry=True)
 
