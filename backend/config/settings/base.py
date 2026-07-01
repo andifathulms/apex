@@ -108,6 +108,18 @@ REST_FRAMEWORK = {
     ],
 }
 
+# --- Cache (Redis) ---
+# Use a separate Redis DB (1) from the Celery broker (0).
+_CACHE_URL = os.environ.get(
+    "CACHE_URL", os.environ.get("REDIS_URL", "redis://redis:6379/0").rsplit("/", 1)[0] + "/1"
+)
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": _CACHE_URL,
+    }
+}
+
 # --- Celery ---
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 CELERY_BROKER_URL = REDIS_URL

@@ -1,6 +1,9 @@
 import requests
 from django.conf import settings
+from django.core.cache import cache
 from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -136,6 +139,7 @@ class RaceWeekendHubView(APIView):
         return Response(data)
 
 
+@method_decorator(cache_page(3600), name="get")
 class TrackLayoutView(APIView):
     """Circuit outline as an X/Y point list, taken from any telemetry lap already
     ingested for this Grand Prix (telemetry is on-demand, so this is populated
@@ -160,6 +164,7 @@ class TrackLayoutView(APIView):
         return Response({"gp_id": gp.id, "lap_id": lap_id, "points": points})
 
 
+@method_decorator(cache_page(3600), name="get")
 class SeasonFormGuideView(APIView):
     """Rolling average finishing position over the last 5 races (per driver).
 
@@ -217,6 +222,7 @@ class SeasonFormGuideView(APIView):
         return Response({"year": year, "form": form})
 
 
+@method_decorator(cache_page(300), name="get")
 class SessionResultsView(APIView):
     def get(self, request, gp_id, session_type):
         session = get_object_or_404(
@@ -235,6 +241,7 @@ class SessionResultsView(APIView):
         })
 
 
+@method_decorator(cache_page(300), name="get")
 class SessionLapsView(APIView):
     def get(self, request, gp_id, session_type):
         session = get_object_or_404(
@@ -253,6 +260,7 @@ class SessionLapsView(APIView):
 
 # --- Comparison tools ---------------------------------------------------------
 
+@method_decorator(cache_page(300), name="get")
 class LapCompareView(APIView):
     """Lap time + sector comparison for two (or more) drivers in a session."""
 
@@ -314,11 +322,23 @@ class TelemetryCompareView(APIView):
                 },
                 status=202,
             )
-        return Response(build_comparison_payload(params))
+
+        # Cache only the fully-ready payload (never the 202): building it scans
+        # ~700 telemetry rows per driver plus the delta computation.
+        cache_key = (
+            f"telemetry:{params.session.id}:{params.driver1}:{params.lap1}:"
+            f"{params.driver2}:{params.lap2}"
+        )
+        payload = cache.get(cache_key)
+        if payload is None:
+            payload = build_comparison_payload(params)
+            cache.set(cache_key, payload, timeout=1800)
+        return Response(payload)
 
 
 # --- Tire strategy ------------------------------------------------------------
 
+@method_decorator(cache_page(300), name="get")
 class TireStrategyView(APIView):
     def get(self, request, session_id):
         session = get_object_or_404(Session, pk=session_id)
@@ -354,6 +374,7 @@ class TireStrategyView(APIView):
         })
 
 
+@method_decorator(cache_page(300), name="get")
 class PitStopComparisonView(APIView):
     def get(self, request, session_id):
         session = get_object_or_404(Session, pk=session_id)
