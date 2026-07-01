@@ -49,3 +49,60 @@ def drs_is_active(value) -> bool:
         return int(value) in DRS_ACTIVE_VALUES
     except (TypeError, ValueError):
         return False
+
+
+def safe_float(value, default: float = 0.0) -> float:
+    """Coerce to float, mapping None/NaN to a default (never returns NaN).
+
+    Note: `float(x or 0)` is a trap here — NaN is truthy, so `nan or 0` is nan.
+    """
+    if value is None or pd.isna(value):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+# FastF1 ClassifiedPosition single-letter codes -> our DriverSessionEntry.Status.
+_CLASSIFIED_STATUS = {
+    "R": "DNF",  # Retired
+    "D": "DSQ",  # Disqualified
+    "E": "DSQ",  # Excluded
+    "W": "DNS",  # Withdrew
+    "F": "DNS",  # Failed to qualify
+    "N": "DNS",  # Not classified
+}
+
+
+def map_status(classified, status) -> str:
+    """Map FastF1 result status to our enum (Finished | DNF | DSQ | DNS).
+
+    Prefer ClassifiedPosition (a numeric string means classified/finished, a
+    letter means a special outcome); fall back to the free-text Status column.
+    """
+    c = "" if classified is None or (isinstance(classified, float) and pd.isna(classified)) else str(classified).strip()
+    if c.isdigit():
+        return "Finished"
+    if c in _CLASSIFIED_STATUS:
+        return _CLASSIFIED_STATUS[c]
+
+    s = "" if status is None or (isinstance(status, float) and pd.isna(status)) else str(status)
+    lowered = s.lower()
+    if s == "Finished" or s.startswith("+"):
+        return "Finished"
+    if "disqualif" in lowered:
+        return "DSQ"
+    if "did not start" in lowered or "dns" in lowered:
+        return "DNS"
+    return "DNF"
+
+
+def normalize_team_color(value) -> str:
+    """FastF1 TeamColor ('3671C6' or NaN) -> '#RRGGBB'."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "#FFFFFF"
+    color = str(value).strip()
+    if not color:
+        return "#FFFFFF"
+    return color if color.startswith("#") else f"#{color}"

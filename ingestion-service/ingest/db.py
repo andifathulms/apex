@@ -76,6 +76,39 @@ def resolve_session_args(session_id: int) -> tuple[int, str, str] | None:
         return (row[0], row[1], row[2]) if row else None
 
 
+def resolve_season_id(session_id: int) -> int | None:
+    """The seasons_season.id that a session belongs to."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT se.id
+            FROM seasons_session s
+            JOIN seasons_grandprix gp ON gp.id = s.grand_prix_id
+            JOIN seasons_season se ON se.id = gp.season_id
+            WHERE s.id = %s
+            """,
+            (session_id,),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def resolve_round_number(session_id: int) -> int | None:
+    """The Grand Prix round number for a session (for Jolpica URLs)."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT gp.round_number
+            FROM seasons_session s
+            JOIN seasons_grandprix gp ON gp.id = s.grand_prix_id
+            WHERE s.id = %s
+            """,
+            (session_id,),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
 def resolve_driver_id(driver_code: str) -> int | None:
     with get_cursor() as cur:
         cur.execute(
