@@ -6,6 +6,7 @@ import {
   DriverCareerStats,
   type CareerData,
 } from "@/components/drivers/DriverCareerStats";
+import { HeadToHead } from "@/components/drivers/HeadToHead";
 
 export default function DriverComparePage() {
   const [a, setA] = useState("VER");
@@ -13,6 +14,7 @@ export default function DriverComparePage() {
   const [result, setResult] = useState<{ a: CareerData; b: CareerData } | null>(
     null
   );
+  const [h2hYear, setH2hYear] = useState(2024);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -66,6 +68,28 @@ export default function DriverComparePage() {
           </div>
         </div>
       )}
+
+      <div className="card p-6">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <h2 className="text-sm font-semibold">Head-to-Head</h2>
+          <span className="text-xs text-text-muted">
+            Direct season comparison — counts only rounds both contested
+            (teammates/rivals).
+          </span>
+          <label className="ml-auto text-sm">
+            <span className="mr-2 text-xs text-text-muted">Season</span>
+            <input
+              type="number"
+              value={h2hYear}
+              min={2018}
+              max={2026}
+              onChange={(e) => setH2hYear(Number(e.target.value) || 2024)}
+              className="w-24 rounded border border-border bg-surface px-3 py-1 font-mono"
+            />
+          </label>
+        </div>
+        <HeadToHead a={a} b={b} year={h2hYear} />
+      </div>
     </div>
   );
 }

@@ -293,37 +293,25 @@ class SeasonFormGuideView(APIView):
         return Response({"year": year, "form": form})
 
 
-def _fetch_season_positions(year, path: str, key: str) -> dict[str, dict[int, int]]:
-    """{driver_code: {round: position}} for a season from Jolpica, paginated
-    across the 100-row cap. `path`/`key` select race results or qualifying."""
+def _driver_season_positions(year, driver_ref: str, path: str, key: str) -> dict[int, int]:
+    """{round: position} for one driver's season — a single Jolpica page (a
+    driver contests <=24 rounds, well under the 100-row cap)."""
     from apps.standings.tasks import jolpica_get
 
-    out: dict[str, dict[int, int]] = defaultdict(dict)
-    offset, page_size, pages = 0, 100, 0
-    while pages < 8:
-        url = f"{settings.JOLPICA_BASE}/{year}/{path}?limit={page_size}&offset={offset}"
-        mr = jolpica_get(url).json().get("MRData", {})
-        races = mr.get("RaceTable", {}).get("Races", [])
-        if not races:
-            break
-        for race in races:
-            rnd = int(race.get("round", 0))
-            for res in race.get(key, []):
-                drv = res.get("Driver", {})
-                code = drv.get("code") or drv.get("driverId", "")[:3].upper()
-                try:
-                    out[code][rnd] = int(res.get("position"))
-                except (TypeError, ValueError):
-                    continue
-        total = int(mr.get("total", 0))
-        offset += page_size
-        pages += 1
-        if offset >= total:
-            break
+    url = f"{settings.JOLPICA_BASE}/{year}/drivers/{driver_ref}/{path}?limit=100"
+    races = jolpica_get(url).json().get("MRData", {}).get("RaceTable", {}).get("Races", [])
+    out: dict[int, int] = {}
+    for race in races:
+        rows = race.get(key, [])
+        if not rows:
+            continue
+        try:
+            out[int(race.get("round", 0))] = int(rows[0].get("position"))
+        except (TypeError, ValueError):
+            continue
     return out
 
 
-@method_decorator(cache_page(3600), name="get")
 class DriverHeadToHeadView(APIView):
     """Direct head-to-head between two drivers over a season — race and
     qualifying — counting only rounds where both were classified (i.e. when
@@ -337,22 +325,47 @@ class DriverHeadToHeadView(APIView):
             raise ValidationError("`a`, `b` and `year` are required.")
         a, b = a.upper(), b.upper()
 
-        def tally(positions):
-            pa, pb = positions.get(a, {}), positions.get(b, {})
+        # Manual cache (cache_page is unreliable for DRF Responses); this endpoint
+        # makes 4 external Jolpica calls, so caching matters.
+        cache_key = f"h2h:{year}:{a}:{b}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        # Resolve driver refs (Jolpica driverId) from our DB — lets us use the
+        # cheap per-driver endpoints (4 calls total instead of paginating the
+        # whole season and getting rate-limited).
+        refs = {
+            d.code: d.external_driver_id
+            for d in Driver.objects.filter(code__in=[a, b]).exclude(external_driver_id="")
+        }
+        if a not in refs or b not in refs:
+            missing = [c for c in (a, b) if c not in refs]
+            raise ValidationError(f"Unknown driver code(s): {', '.join(missing)}")
+
+        def tally(pa, pb):
             shared = sorted(set(pa) & set(pb))
-            a_wins = sum(1 for r in shared if pa[r] < pb[r])
-            b_wins = sum(1 for r in shared if pb[r] < pa[r])
-            return {"a_wins": a_wins, "b_wins": b_wins, "rounds": len(shared)}
+            return {
+                "a_wins": sum(1 for r in shared if pa[r] < pb[r]),
+                "b_wins": sum(1 for r in shared if pb[r] < pa[r]),
+                "rounds": len(shared),
+            }
 
         try:
-            race = tally(_fetch_season_positions(year, "results.json", "Results"))
+            race = tally(
+                _driver_season_positions(year, refs[a], "results.json", "Results"),
+                _driver_season_positions(year, refs[b], "results.json", "Results"),
+            )
             quali = tally(
-                _fetch_season_positions(year, "qualifying.json", "QualifyingResults")
+                _driver_season_positions(year, refs[a], "qualifying.json", "QualifyingResults"),
+                _driver_season_positions(year, refs[b], "qualifying.json", "QualifyingResults"),
             )
         except requests.RequestException as exc:
             return Response({"error": str(exc)}, status=502)
 
-        return Response({"year": int(year), "a": a, "b": b, "race": race, "qualifying": quali})
+        payload = {"year": int(year), "a": a, "b": b, "race": race, "qualifying": quali}
+        cache.set(cache_key, payload, timeout=3600)
+        return Response(payload)
 
 
 @method_decorator(cache_page(300), name="get")
