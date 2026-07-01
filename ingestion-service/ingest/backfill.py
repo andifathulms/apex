@@ -72,8 +72,9 @@ def backfill_season(year: int):
                     cur.execute(
                         """
                         INSERT INTO seasons_session (grand_prix_id, session_type,
-                            weather_summary, is_loaded, created_at, updated_at)
-                        VALUES (%s, %s, '{}'::jsonb, FALSE, NOW(), NOW())
+                            external_session_key, weather_summary, is_loaded,
+                            created_at, updated_at)
+                        VALUES (%s, %s, '', '{}'::jsonb, FALSE, NOW(), NOW())
                         ON CONFLICT (grand_prix_id, session_type) DO NOTHING
                         """,
                         (gp_id, stype),
