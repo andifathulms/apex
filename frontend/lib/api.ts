@@ -58,6 +58,13 @@ export const api = {
   getStandings: (year: number) => request(`/seasons/${year}/standings/`),
   getStandingsProgression: (year: number) =>
     request(`/seasons/${year}/standings/progression/`),
+  getConstructorStandings: (year: number) =>
+    request(`/seasons/${year}/constructors/`),
+  getConstructorProgression: (year: number) =>
+    request(`/seasons/${year}/constructors/progression/`),
+
+  getHeadToHead: (a: string, b: string, year: number) =>
+    request(`/drivers/h2h/?a=${a}&b=${b}&year=${year}`),
 
   getDriverCareer: (code: string) => request(`/drivers/${code}/career/`),
   compareDrivers: (a: string, b: string) =>

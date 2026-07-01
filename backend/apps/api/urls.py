@@ -16,6 +16,8 @@ urlpatterns = [
     # Standings
     path("seasons/<int:year>/standings/", views.SeasonStandingsView.as_view()),
     path("seasons/<int:year>/standings/progression/", views.SeasonStandingsProgressionView.as_view()),
+    path("seasons/<int:year>/constructors/", views.ConstructorStandingsView.as_view()),
+    path("seasons/<int:year>/constructors/progression/", views.ConstructorProgressionView.as_view()),
     path("seasons/<int:year>/form/", views.SeasonFormGuideView.as_view()),
 
     # Comparison tools
@@ -28,6 +30,7 @@ urlpatterns = [
 
     # Drivers
     path("drivers/compare/", views.DriverCompareView.as_view()),
+    path("drivers/h2h/", views.DriverHeadToHeadView.as_view()),
     path("drivers/<str:code>/career/", views.DriverCareerView.as_view()),
 
     # Race weekend hub (serves as the races/<id>/ detail view)

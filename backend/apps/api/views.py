@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import requests
 from django.conf import settings
 from django.core.cache import cache
@@ -26,6 +28,7 @@ from .serializers import (
     RacePacePredictionSerializer,
     SeasonSerializer,
     SeasonStandingSerializer,
+    TeamSerializer,
 )
 from .services import build_comparison_payload, parse_telemetry_compare_params
 
@@ -106,6 +109,74 @@ class SeasonStandingsProgressionView(APIView):
                 {"round": row.after_round, "points": row.points, "position": row.position}
             )
         return Response({"year": year, "series": list(series.values())})
+
+
+class ConstructorStandingsView(APIView):
+    """Latest constructor standings, aggregated from driver standings.
+
+    Constructor points = sum of the team's drivers' championship points, which
+    is exactly the official definition — so we derive it from SeasonStanding
+    rather than storing a parallel table."""
+
+    def get(self, request, year):
+        season = get_object_or_404(Season, year=year)
+        latest = (
+            SeasonStanding.objects.filter(season=season)
+            .order_by("-after_round")
+            .values_list("after_round", flat=True)
+            .first()
+        )
+        totals: dict[int, dict] = {}
+        rows = (
+            SeasonStanding.objects.filter(
+                season=season, after_round=latest, team__isnull=False
+            ).select_related("team")
+            if latest is not None
+            else []
+        )
+        for r in rows:
+            entry = totals.setdefault(r.team_id, {"team": r.team, "points": 0.0})
+            entry["points"] += r.points
+        standings = sorted(totals.values(), key=lambda e: -e["points"])
+        return Response({
+            "year": year,
+            "after_round": latest,
+            "standings": [
+                {
+                    "position": i,
+                    "team": TeamSerializer(e["team"]).data,
+                    "points": round(e["points"], 1),
+                }
+                for i, e in enumerate(standings, start=1)
+            ],
+        })
+
+
+class ConstructorProgressionView(APIView):
+    """Race-by-race constructor points, aggregated per round from drivers."""
+
+    def get(self, request, year):
+        season = get_object_or_404(Season, year=year)
+        rows = (
+            SeasonStanding.objects.filter(season=season, team__isnull=False)
+            .select_related("team")
+            .order_by("after_round")
+        )
+        per_round: dict[int, dict[int, float]] = defaultdict(lambda: defaultdict(float))
+        names: dict[int, str] = {}
+        for r in rows:
+            per_round[r.after_round][r.team_id] += r.points
+            names[r.team_id] = r.team.name
+        series: dict[int, list] = defaultdict(list)
+        for rnd in sorted(per_round):
+            for team_id, pts in per_round[rnd].items():
+                series[team_id].append({"round": rnd, "points": round(pts, 1)})
+        return Response({
+            "year": year,
+            "series": [
+                {"team": names[tid], "points": pts} for tid, pts in series.items()
+            ],
+        })
 
 
 # --- Race weekend hub ---------------------------------------------------------
@@ -220,6 +291,68 @@ class SeasonFormGuideView(APIView):
             })
         form.sort(key=lambda f: f["rolling_avg"] if f["rolling_avg"] is not None else 99)
         return Response({"year": year, "form": form})
+
+
+def _fetch_season_positions(year, path: str, key: str) -> dict[str, dict[int, int]]:
+    """{driver_code: {round: position}} for a season from Jolpica, paginated
+    across the 100-row cap. `path`/`key` select race results or qualifying."""
+    from apps.standings.tasks import jolpica_get
+
+    out: dict[str, dict[int, int]] = defaultdict(dict)
+    offset, page_size, pages = 0, 100, 0
+    while pages < 8:
+        url = f"{settings.JOLPICA_BASE}/{year}/{path}?limit={page_size}&offset={offset}"
+        mr = jolpica_get(url).json().get("MRData", {})
+        races = mr.get("RaceTable", {}).get("Races", [])
+        if not races:
+            break
+        for race in races:
+            rnd = int(race.get("round", 0))
+            for res in race.get(key, []):
+                drv = res.get("Driver", {})
+                code = drv.get("code") or drv.get("driverId", "")[:3].upper()
+                try:
+                    out[code][rnd] = int(res.get("position"))
+                except (TypeError, ValueError):
+                    continue
+        total = int(mr.get("total", 0))
+        offset += page_size
+        pages += 1
+        if offset >= total:
+            break
+    return out
+
+
+@method_decorator(cache_page(3600), name="get")
+class DriverHeadToHeadView(APIView):
+    """Direct head-to-head between two drivers over a season — race and
+    qualifying — counting only rounds where both were classified (i.e. when
+    they were teammates/rivals racing the same events)."""
+
+    def get(self, request):
+        a = request.query_params.get("a")
+        b = request.query_params.get("b")
+        year = request.query_params.get("year")
+        if not (a and b and year):
+            raise ValidationError("`a`, `b` and `year` are required.")
+        a, b = a.upper(), b.upper()
+
+        def tally(positions):
+            pa, pb = positions.get(a, {}), positions.get(b, {})
+            shared = sorted(set(pa) & set(pb))
+            a_wins = sum(1 for r in shared if pa[r] < pb[r])
+            b_wins = sum(1 for r in shared if pb[r] < pa[r])
+            return {"a_wins": a_wins, "b_wins": b_wins, "rounds": len(shared)}
+
+        try:
+            race = tally(_fetch_season_positions(year, "results.json", "Results"))
+            quali = tally(
+                _fetch_season_positions(year, "qualifying.json", "QualifyingResults")
+            )
+        except requests.RequestException as exc:
+            return Response({"error": str(exc)}, status=502)
+
+        return Response({"year": int(year), "a": a, "b": b, "race": race, "qualifying": quali})
 
 
 @method_decorator(cache_page(300), name="get")
