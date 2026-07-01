@@ -1,5 +1,6 @@
 """Standings sync from Jolpica-F1 (Ergast-compatible schema)."""
 import logging
+import time
 
 import requests
 from celery import shared_task
@@ -10,6 +11,28 @@ from apps.seasons.models import Driver, Season, Team
 from .models import SeasonStanding
 
 logger = logging.getLogger(__name__)
+
+# Jolpica's unauthenticated limit is ~4 req/s (and a rolling hourly cap). Stay a
+# little under it and back off on 429 so multi-season backfills don't get
+# throttled midway.
+JOLPICA_MIN_INTERVAL = 0.35
+
+
+def jolpica_get(url: str, max_retries: int = 5) -> requests.Response:
+    """GET with polite throttling + exponential backoff on HTTP 429."""
+    delay = 2.0
+    for _ in range(max_retries):
+        resp = requests.get(url, timeout=20)
+        if resp.status_code == 429:
+            wait = float(resp.headers.get("Retry-After", delay))
+            logger.warning("Jolpica 429 — backing off %.1fs (%s)", wait, url)
+            time.sleep(wait)
+            delay = min(delay * 2, 30)
+            continue
+        resp.raise_for_status()
+        return resp
+    resp.raise_for_status()
+    return resp
 
 
 @shared_task
@@ -26,8 +49,7 @@ def sync_standings(year: int, after_round: int | None = None):
         else f"{base}/{year}/driverStandings.json"
     )
     try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
+        resp = jolpica_get(url)
     except requests.RequestException as exc:
         logger.warning("Jolpica standings sync failed for %s: %s", year, exc)
         return {"synced": False, "reason": str(exc)}
@@ -78,3 +100,34 @@ def sync_standings(year: int, after_round: int | None = None):
 
     logger.info("Synced %d standings rows for %s R%s", count, year, rnd)
     return {"synced": True, "count": count, "round": rnd}
+
+
+@shared_task
+def sync_standings_progression(year: int):
+    """Snapshot standings after every completed round (powers the progression
+    chart), not just the final table."""
+    final = sync_standings(year)  # also captures the latest round
+    if not final.get("synced"):
+        return final
+    last_round = final["round"]
+
+    rounds = 1
+    for rnd in range(1, last_round):
+        time.sleep(JOLPICA_MIN_INTERVAL)
+        res = sync_standings(year, rnd)
+        if res.get("synced"):
+            rounds += 1
+    logger.info("Standings progression for %s: %d rounds", year, rounds)
+    return {"year": year, "rounds_captured": rounds, "last_round": last_round}
+
+
+@shared_task
+def sync_all_standings(start: int = 2018, end: int | None = None):
+    """Full historical standings backfill (2018-present per PRD scope)."""
+    import datetime
+
+    end = end or datetime.date.today().year
+    results = []
+    for year in range(start, end + 1):
+        results.append(sync_standings_progression(year))
+    return results

@@ -93,6 +93,31 @@ def resolve_season_id(session_id: int) -> int | None:
         return row[0] if row else None
 
 
+def list_sessions(year: int, session_types: tuple[str, ...] | None = None,
+                  only_unloaded: bool = False) -> list[tuple]:
+    """List (gp_name, session_type, is_loaded) for a season, for lap backfill."""
+    clauses = ["se.year = %s"]
+    params: list = [year]
+    if session_types:
+        clauses.append("s.session_type = ANY(%s)")
+        params.append(list(session_types))
+    if only_unloaded:
+        clauses.append("s.is_loaded = FALSE")
+    with get_cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT gp.name, s.session_type, s.is_loaded
+            FROM seasons_session s
+            JOIN seasons_grandprix gp ON gp.id = s.grand_prix_id
+            JOIN seasons_season se ON se.id = gp.season_id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY gp.round_number, s.session_type
+            """,
+            params,
+        )
+        return [(r[0], r[1], r[2]) for r in cur.fetchall()]
+
+
 def resolve_round_number(session_id: int) -> int | None:
     """The Grand Prix round number for a session (for Jolpica URLs)."""
     with get_cursor() as cur:

@@ -8,7 +8,8 @@ import logging
 
 import requests
 
-from .db import get_connection
+from .db import get_connection, list_sessions
+from .sessions import ingest_session_laps
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,38 @@ def backfill_all(start: int = EARLIEST_SEASON, end: int | None = None):
     return results
 
 
+def backfill_laps(year: int, session_types: tuple[str, ...] = ("R",),
+                  skip_loaded: bool = True):
+    """Ingest lap-level data (no telemetry) for a season's sessions.
+
+    Defaults to race sessions only. Pass e.g. ('FP2', 'FP3', 'Q', 'R') for a
+    fuller backfill. Telemetry stays on-demand. Skips already-loaded sessions by
+    default so this is safe to resume.
+    """
+    sessions = list_sessions(year, session_types, only_unloaded=skip_loaded)
+    logger.info("Backfilling laps for %d sessions in %s", len(sessions), year)
+
+    done, failed = 0, 0
+    for gp_name, stype, _is_loaded in sessions:
+        try:
+            ingest_session_laps(year, gp_name, stype)
+            done += 1
+        except Exception as exc:  # a single missing session shouldn't halt the run
+            failed += 1
+            logger.warning("Lap ingest failed for %s %s %s: %s", year, gp_name, stype, exc)
+    return {"year": year, "ingested": done, "failed": failed, "total": len(sessions)}
+
+
+def backfill_laps_all(start: int = EARLIEST_SEASON, end: int | None = None,
+                      session_types: tuple[str, ...] = ("R",)):
+    """Lap backfill across all seasons. This is the heavy, long-running job —
+    a full multi-season telemetry-free lap load, run as a background task."""
+    import datetime
+
+    end = end or datetime.date.today().year
+    return [backfill_laps(y, session_types) for y in range(start, end + 1)]
+
+
 if __name__ == "__main__":
-    # Manual invocation: python -m ingest.backfill
+    # Manual invocation: python -m ingest.backfill  (schedule only)
     backfill_all()
