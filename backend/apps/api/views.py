@@ -1,3 +1,5 @@
+import requests
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
@@ -132,6 +134,87 @@ class RaceWeekendHubView(APIView):
                 })
         data["fastest_laps"] = callouts
         return Response(data)
+
+
+class TrackLayoutView(APIView):
+    """Circuit outline as an X/Y point list, taken from any telemetry lap already
+    ingested for this Grand Prix (telemetry is on-demand, so this is populated
+    once a user has opened the Telemetry Deep Dive for the weekend)."""
+
+    def get(self, request, gp_id):
+        gp = get_object_or_404(GrandPrix, pk=gp_id)
+        lap_id = (
+            Telemetry.objects.filter(
+                lap__session__grand_prix=gp, x_position__isnull=False
+            )
+            .values_list("lap_id", flat=True)
+            .first()
+        )
+        if lap_id is None:
+            return Response({"gp_id": gp.id, "points": []})
+        points = list(
+            Telemetry.objects.filter(lap_id=lap_id)
+            .order_by("distance")
+            .values("x_position", "y_position", "speed_kmh")
+        )
+        return Response({"gp_id": gp.id, "lap_id": lap_id, "points": points})
+
+
+class SeasonFormGuideView(APIView):
+    """Rolling average finishing position over the last 5 races (per driver).
+
+    Pulls the full season's finishing positions from Jolpica in one call so it
+    works for every season without needing all races ingested locally.
+    """
+
+    def get(self, request, year):
+        from apps.standings.tasks import jolpica_get
+
+        # Jolpica caps results at 100 rows/page, so paginate to reach the latest
+        # rounds (a naive single call would return only the first ~5 races).
+        by_driver: dict[str, list] = {}
+        offset, page_size, pages = 0, 100, 0
+        try:
+            while pages < 8:
+                url = (
+                    f"{settings.JOLPICA_BASE}/{year}/results.json"
+                    f"?limit={page_size}&offset={offset}"
+                )
+                mr = jolpica_get(url).json().get("MRData", {})
+                races = mr.get("RaceTable", {}).get("Races", [])
+                if not races:
+                    break
+                for race in races:
+                    rnd = int(race.get("round", 0))
+                    for res in race.get("Results", []):
+                        drv = res.get("Driver", {})
+                        code = drv.get("code") or drv.get("driverId", "")[:3].upper()
+                        try:
+                            pos = int(res.get("position"))
+                        except (TypeError, ValueError):
+                            continue
+                        by_driver.setdefault(code, []).append((rnd, pos))
+                total = int(mr.get("total", 0))
+                offset += page_size
+                pages += 1
+                if offset >= total:
+                    break
+        except requests.RequestException as exc:
+            return Response({"year": year, "form": [], "error": str(exc)})
+
+        form = []
+        for code, rows in by_driver.items():
+            rows.sort()
+            last5 = [p for _, p in rows[-5:]]
+            avg = round(sum(last5) / len(last5), 2) if last5 else None
+            form.append({
+                "driver": code,
+                "last5": last5,
+                "rolling_avg": avg,
+                "races": len(rows),
+            })
+        form.sort(key=lambda f: f["rolling_avg"] if f["rolling_avg"] is not None else 99)
+        return Response({"year": year, "form": form})
 
 
 class SessionResultsView(APIView):

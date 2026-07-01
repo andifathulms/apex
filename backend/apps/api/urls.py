@@ -16,6 +16,7 @@ urlpatterns = [
     # Standings
     path("seasons/<int:year>/standings/", views.SeasonStandingsView.as_view()),
     path("seasons/<int:year>/standings/progression/", views.SeasonStandingsProgressionView.as_view()),
+    path("seasons/<int:year>/form/", views.SeasonFormGuideView.as_view()),
 
     # Comparison tools
     path("compare/laps/", views.LapCompareView.as_view()),
@@ -31,6 +32,7 @@ urlpatterns = [
 
     # Race weekend hub (serves as the races/<id>/ detail view)
     path("races/<int:gp_id>/", views.RaceWeekendHubView.as_view()),
+    path("races/<int:gp_id>/track/", views.TrackLayoutView.as_view()),
     path("races/<int:gp_id>/sessions/<str:session_type>/results/", views.SessionResultsView.as_view()),
     path("races/<int:gp_id>/sessions/<str:session_type>/laps/", views.SessionLapsView.as_view()),
 

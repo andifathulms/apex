@@ -8,6 +8,8 @@ import { StateWrapper } from "@/components/ui/StateWrapper";
 import { LapTimeDisplay } from "@/components/ui/LapTimeDisplay";
 import type { GrandPrix } from "@/lib/types";
 import { SessionResultsTable } from "./SessionResultsTable";
+import { WeatherSummary } from "./WeatherSummary";
+import { TrackLayoutMap } from "./TrackLayoutMap";
 
 export function RaceWeekendHub({
   year,
@@ -43,6 +45,7 @@ function HubContent({
       gp.sessions[0]?.session_type ??
       "R"
   );
+  const activeSession = gp.sessions.find((s) => s.session_type === active);
 
   return (
     <div className="space-y-6">
@@ -103,8 +106,24 @@ function HubContent({
             </button>
           ))}
         </div>
-        <div className="card p-4">
-          <SessionResultsTable gpId={gp.id} sessionType={active} />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="card p-4 lg:col-span-2">
+            <SessionResultsTable gpId={gp.id} sessionType={active} />
+          </div>
+          <div className="space-y-4">
+            <div className="card p-4">
+              <h3 className="mb-2 text-xs uppercase tracking-wide text-text-secondary">
+                Weather
+              </h3>
+              <WeatherSummary weather={activeSession?.weather_summary as never} />
+            </div>
+            <div className="card p-4">
+              <h3 className="mb-2 text-xs uppercase tracking-wide text-text-secondary">
+                Circuit
+              </h3>
+              <TrackLayoutMap gpId={gp.id} />
+            </div>
+          </div>
         </div>
       </div>
     </div>

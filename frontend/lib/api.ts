@@ -42,6 +42,8 @@ export const api = {
   },
 
   getRaceHub: (gpId: number | string) => request(`/races/${gpId}/`),
+  getTrackLayout: (gpId: number | string) => request(`/races/${gpId}/track/`),
+  getForm: (year: number) => request(`/seasons/${year}/form/`),
   getSessionResults: (gpId: number | string, type: string) =>
     request(`/races/${gpId}/sessions/${type}/results/`),
   getSessionLaps: (gpId: number | string, type: string) =>
