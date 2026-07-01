@@ -66,6 +66,9 @@ function HubContent({
         <Link className="text-drs-green hover:underline" href={`/race/${year}/${round}/telemetry`}>
           Telemetry Deep Dive →
         </Link>
+        <Link className="text-drs-green hover:underline" href={`/race/${year}/${round}/prediction`}>
+          Race Pace Prediction →
+        </Link>
       </nav>
 
       {gp.fastest_laps && gp.fastest_laps.length > 0 && (
