@@ -5,6 +5,7 @@ import {
   Line,
   LineChart,
   CartesianGrid,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -80,6 +81,17 @@ function Chart({ data }: { data: CompareResponse }) {
             formatter={(v: number) => formatLapTime(v)}
           />
           <Legend />
+          {data.drivers.flatMap((block, i) =>
+            block.pit_stops.map((p, j) => (
+              <ReferenceLine
+                key={`pit-${i}-${j}`}
+                x={p.lap_number}
+                stroke={DRIVER_COLORS[i % DRIVER_COLORS.length]}
+                strokeDasharray="2 2"
+                strokeOpacity={0.5}
+              />
+            ))
+          )}
           {data.drivers.map((block, i) => (
             <Line
               key={block.driver_code}

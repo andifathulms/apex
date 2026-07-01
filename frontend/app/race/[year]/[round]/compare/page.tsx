@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { Lap } from "@/lib/types";
 import { LapTimeComparison } from "@/components/compare/LapTimeComparison";
+import { SectorDeltaChart } from "@/components/compare/SectorDeltaChart";
+import { CumulativeGapChart } from "@/components/compare/CumulativeGapChart";
 
 export default function ComparePage({
   params,
@@ -63,8 +65,27 @@ export default function ComparePage({
       {error && <p className="text-apex-red">{error}</p>}
 
       {sessionId && a && b && (
-        <div className="card p-4">
-          <LapTimeComparison sessionId={sessionId} drivers={[a, b]} />
+        <div className="space-y-6">
+          <div className="card p-4">
+            <h2 className="mb-2 text-xs uppercase tracking-wide text-text-secondary">
+              Lap Times
+            </h2>
+            <LapTimeComparison sessionId={sessionId} drivers={[a, b]} />
+          </div>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="card p-4">
+              <h2 className="mb-2 text-xs uppercase tracking-wide text-text-secondary">
+                Sector Deltas
+              </h2>
+              <SectorDeltaChart sessionId={sessionId} drivers={[a, b]} />
+            </div>
+            <div className="card p-4">
+              <h2 className="mb-2 text-xs uppercase tracking-wide text-text-secondary">
+                Cumulative Gap
+              </h2>
+              <CumulativeGapChart sessionId={sessionId} drivers={[a, b]} />
+            </div>
+          </div>
         </div>
       )}
     </div>
