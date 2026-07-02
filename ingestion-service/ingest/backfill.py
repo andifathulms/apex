@@ -99,13 +99,19 @@ def backfill_all(start: int = EARLIEST_SEASON, end: int | None = None):
 
 
 def backfill_laps(year: int, session_types: tuple[str, ...] = ("R",),
-                  skip_loaded: bool = True):
+                  skip_loaded: bool = True, delay_seconds: float = 2.5):
     """Ingest lap-level data (no telemetry) for a season's sessions.
 
     Defaults to race sessions only. Pass e.g. ('FP2', 'FP3', 'Q', 'R') for a
     fuller backfill. Telemetry stays on-demand. Skips already-loaded sessions by
     default so this is safe to resume.
+
+    `delay_seconds` throttles between sessions: hammering the FastF1 schedule/
+    timing API too fast triggers a temporary block ("Failed to load any schedule
+    data"), so we pace requests.
     """
+    import time
+
     sessions = list_sessions(year, session_types, only_unloaded=skip_loaded)
     logger.info("Backfilling laps for %d sessions in %s", len(sessions), year)
 
@@ -117,6 +123,8 @@ def backfill_laps(year: int, session_types: tuple[str, ...] = ("R",),
         except Exception as exc:  # a single missing session shouldn't halt the run
             failed += 1
             logger.warning("Lap ingest failed for %s %s %s: %s", year, gp_name, stype, exc)
+        if delay_seconds:
+            time.sleep(delay_seconds)
     return {"year": year, "ingested": done, "failed": failed, "total": len(sessions)}
 
 
