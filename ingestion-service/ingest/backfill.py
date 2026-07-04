@@ -128,14 +128,59 @@ def backfill_laps(year: int, session_types: tuple[str, ...] = ("R",),
     return {"year": year, "ingested": done, "failed": failed, "total": len(sessions)}
 
 
+def prime_schedule(year: int, retries: int = 5, base_wait: float = 20.0) -> bool:
+    """Fetch and cache a season's event schedule once, with backoff.
+
+    FastF1 resolves every get_session() through the season schedule; if that
+    fetch is rate-limited, EVERY session in the year then fails with "Failed to
+    load any schedule data" and hammers the endpoint further. Priming the
+    schedule once (patiently) means the on-disk cache serves all subsequent
+    session loads for that year with no extra schedule calls.
+    """
+    import time
+
+    import fastf1
+
+    from . import enable_cache
+
+    enable_cache()
+    for attempt in range(retries):
+        try:
+            schedule = fastf1.get_event_schedule(year, include_testing=False)
+            if schedule is not None and len(schedule) > 0:
+                logger.info("Schedule cached for %s (%d events)", year, len(schedule))
+                return True
+            logger.warning("Empty schedule for %s (attempt %d)", year, attempt + 1)
+        except Exception as exc:
+            logger.warning(
+                "Schedule fetch failed for %s (attempt %d/%d): %s",
+                year, attempt + 1, retries, exc,
+            )
+        time.sleep(base_wait * (attempt + 1))  # 20s, 40s, 60s, ...
+    logger.error("Giving up on schedule for %s after %d attempts", year, retries)
+    return False
+
+
 def backfill_laps_all(start: int = EARLIEST_SEASON, end: int | None = None,
-                      session_types: tuple[str, ...] = ("R",)):
-    """Lap backfill across all seasons. This is the heavy, long-running job —
-    a full multi-season telemetry-free lap load, run as a background task."""
+                      session_types: tuple[str, ...] = ("R",),
+                      session_delay: float = 2.5, year_gap: float = 30.0):
+    """Full multi-season lap backfill, resumable, run as a background job.
+
+    Primes each season's schedule (with backoff) before ingesting it, and pauses
+    `year_gap` between seasons so the upstream API's rate window can recover.
+    Years whose schedule can't be fetched are skipped (not hammered)."""
     import datetime
+    import time
 
     end = end or datetime.date.today().year
-    return [backfill_laps(y, session_types) for y in range(start, end + 1)]
+    results = []
+    for year in range(start, end + 1):
+        if not prime_schedule(year):
+            results.append({"year": year, "skipped": "schedule unavailable"})
+            continue
+        results.append(backfill_laps(year, session_types, delay_seconds=session_delay))
+        time.sleep(year_gap)
+    return results
 
 
 if __name__ == "__main__":
